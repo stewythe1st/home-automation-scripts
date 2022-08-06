@@ -34,7 +34,7 @@ class GarageDoor:
             else:
                 # If no state change, see if enough seconds have 
                 # passed since last state change
-                if (time.time() - self.time) > 4:
+                if (time.time() - self.time) > 3:
                     self.timing = False
                     self.report()
         else:
@@ -114,6 +114,7 @@ def main():
     garage_door.report()
     while(1):
         garage_door.read()
+        time.sleep(0.1)
 
 if __name__ == "__main__":
     main()
