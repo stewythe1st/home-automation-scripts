@@ -82,7 +82,7 @@ class Doorbell:
         print("%s: %s" % (name_normalized, self.state))
         topic = "homeassistant/doorbell/%s" % name_normalized
         data = {
-            "state": "on" if self.state else "off",
+            "state": "ON" if self.state else "OFF",
             "voltage": round(self.voltage, 3)
         }
         try:
