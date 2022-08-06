@@ -23,6 +23,7 @@ class Doorbell:
         self.state = False
         self.last_state = False
         self.name = name
+        self.count = 0
     
     def read(self):
         try:
@@ -30,22 +31,40 @@ class Doorbell:
         except:
             self.value = 0
             self.voltage = 0
-            self.state = False;
-            self.last_state = False;
+            self.state = False
+            self.last_state = False
             return
         self.voltage = self.value * (5.00 / 32767)
         #print("%s" % round(self.voltage, 3))
         if self.baseline != 0:
             detection_factor = 3.0
-            self.state = (self.voltage > (self.baseline + (self.variance * detection_factor))) or \
-                         (self.voltage < (self.baseline - (self.variance * detection_factor)))
-            if self.state != self.last_state:
+            state = (self.voltage > (self.baseline + (self.variance * detection_factor))) or \
+                    (self.voltage < (self.baseline - (self.variance * detection_factor)))
+            #print("%0.3fV - %s" % (self.voltage, "RING" if state else "----"))
+            # Wait until signal stabilizes before signaling a on->off transition
+            if not state and self.last_state:
+                self.count = self.count + 1
+                if self.count > 20:
+                    self.state = False
+                    self.last_state = False
+                    self.count = 0
+                    self.report()
+            # Immediately signal a off->on transition
+            if state and not self.last_state:
+                self.state = True
+                self.last_state = True
+                print("Ring!!!")
                 self.report()
-                if self.state:
-                    print("Ring!!!")
+            # Otherwise just update state
+            if not state and not self.last_state:
+                self.state = False
+                self.last_state = False
+            if state and self.last_state:
+                self.state = True
+                self.last_state = True
         else:
             self.state = False
-        self.last_state = self.state
+            self.last_state = False
     
     def get_baseline(self, sampleTime = 10.0, numSamples = 100):
         print("Gathering baseline...")
@@ -53,7 +72,6 @@ class Doorbell:
         for i in range(numSamples):
             self.read()
             samples[i] = self.voltage
-            #print(samples)
             time.sleep(sampleTime / numSamples)
         self.baseline = sum(samples) / len(samples)
         self.variance = max(abs(self.baseline - max(samples)), \
@@ -79,7 +97,7 @@ class Doorbell:
         
     def report(self):
         name_normalized = self.name.lower().replace(" ", "_")
-        print("%s: %s" % (name_normalized, self.state))
+        #print("%s: %s" % (name_normalized, self.state))
         topic = "homeassistant/doorbell/%s" % name_normalized
         data = {
             "state": "ON" if self.state else "OFF",
@@ -109,6 +127,7 @@ def main():
     doorbell.report()
     while(1):
         doorbell.read()
+        time.sleep(0.01)
 
 if __name__ == "__main__":
     main()
