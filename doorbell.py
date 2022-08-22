@@ -3,6 +3,7 @@ import time
 import json
 import os
 from threading import Timer
+import schedule
 import Adafruit_ADS1x15 as ads
 
 # https://stackoverflow.com/a/48741004
@@ -37,7 +38,7 @@ class Doorbell:
         self.voltage = self.value * (5.00 / 32767)
         #print("%s" % round(self.voltage, 3))
         if self.baseline != 0:
-            detection_factor = 3.0
+            detection_factor = 4.5
             state = (self.voltage > (self.baseline + (self.variance * detection_factor))) or \
                     (self.voltage < (self.baseline - (self.variance * detection_factor)))
             #print("%0.3fV - %s" % (self.voltage, "RING" if state else "----"))
@@ -90,7 +91,7 @@ class Doorbell:
             "value_template": "{{ value_json.state }}"
         }
         try:
-            self.client.publish(topic, json.dumps(data))
+            self.client.publish(topic, json.dumps(data), retain=True)
         except:
             pass
         return
@@ -118,6 +119,8 @@ def main():
     doorbell = Doorbell(client, adc, 0) 
     doorbell.register()
     doorbell.get_baseline()
+    # Use schedule to re-acquire baseline nightly
+    schedule.every().day.at("04:00").do(doorbell.get_baseline)
     # Use the repeating timer to send the reports every 15 seconds
     timer = RepeatTimer(15, doorbell.report)
     timer.daemon = True
@@ -127,6 +130,7 @@ def main():
     doorbell.report()
     while(1):
         doorbell.read()
+        schedule.run_pending()
         time.sleep(0.01)
 
 if __name__ == "__main__":
