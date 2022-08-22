@@ -55,13 +55,12 @@ class GarageDoor:
         topic = "homeassistant/binary_sensor/%s/config" % name_normalized
         data = {
             "name": self.name, 
-            "icon": "mdi:garage-variant",
             "device_class": "garage_door",
             "state_topic": "homeassistant/garage_door/%s" % name_normalized,
             "value_template": "{{ value_json.state }}"
         }
         try:
-            self.client.publish(topic, json.dumps(data))
+            self.client.publish(topic, json.dumps(data), retain=True)
         except:
             pass
         return
@@ -78,7 +77,11 @@ class GarageDoor:
         data = {
             "state": "ON" if self.state else "OFF"
         }
-        self.client.publish(topic, json.dumps(data))
+        try:
+            self.client.publish(topic, json.dumps(data))
+        except:
+            pass
+        return
 
     def on_message(self, client, userdata, msg):
         message_name = msg.topic.replace("homeassistant/garage_door/", "")
