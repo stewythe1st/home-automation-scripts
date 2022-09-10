@@ -54,7 +54,7 @@ class Sensor:
         self.value[0] = value
         average = sum(self.value) / len(self.value)
         self.voltage = average * (5.00 / 32767)
-        self.voltage = min(max(self.voltage, WET_VOLTAGE), DRY_VOLTAGE)
+        #self.voltage = min(max(self.voltage, WET_VOLTAGE), DRY_VOLTAGE)
         self.moisture = scale(self.voltage, WET_VOLTAGE, DRY_VOLTAGE, 100, 0)
     
     def register(self):
@@ -133,11 +133,16 @@ class Valve:
         self.state = self.water_mode or self.override_mode
         gpio.output(VALVE_PIN, self.state)
         
-    def override_switched(self, channel):
+    def override_switched(self, pin):
         self.override_mode = gpio.input(OVERRIDE_PIN)
         print("Overriding to %s" % "ON" if self.override_mode else "OFF")
         self.update()
         self.report()
+        
+def on_message(client, userdata, msg):
+    if msg.topic == "homeassistant/register":
+        for sensor in sensors:
+            sensor.register()
         
 def blink():
     global status_led
@@ -147,7 +152,9 @@ def blink():
 def main():
     # Set up MQTT
     client = mqtt.Client("mqtt_garden_%u" % os.getpid())
+    client.on_message = on_message
     client.connect("192.168.1.9", 1883)
+    client.subscribe("homeassistant/register")
     client.loop_start()
     # Set up GPIO
     gpio.setmode(gpio.BCM)
@@ -163,7 +170,9 @@ def main():
     # Set up override mode switch
     gpio.setup(OVERRIDE_PIN, gpio.IN, pull_up_down=gpio.PUD_DOWN)
     gpio.add_event_detect(OVERRIDE_PIN, gpio.BOTH, callback=valve.override_switched)
+    valve.override_switched(OVERRIDE_PIN)
     # Set up moisture sensors
+    global sensors
     sensors = []
     adc48 = ads.ADS1115(address=0x48)
     sensors.append(Sensor(client, adc48, 0))
