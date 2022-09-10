@@ -34,7 +34,7 @@ class GarageDoor:
             else:
                 # If no state change, see if enough seconds have 
                 # passed since last state change
-                if (time.time() - self.time) > 3:
+                if (time.time() - self.time) > 1.5:
                     self.timing = False
                     self.report()
         else:
@@ -84,15 +84,18 @@ class GarageDoor:
         return
 
     def on_message(self, client, userdata, msg):
-        message_name = msg.topic.replace("homeassistant/garage_door/", "")
-        name_normalized = self.name.lower().replace(" ", "_")
-        if message_name == name_normalized:
-            data = json.loads(msg.payload)
-            if "command" in data:
-                if data["command"].lower() == "on":
-                    if (time.time() - self.trigger_time) > 5:
-                        print("Trigger!")
-                        self.trigger()
+        if msg.topic == "homeassistant/register":
+            self.register()
+        else:
+            message_name = msg.topic.replace("homeassistant/garage_door/", "")
+            name_normalized = self.name.lower().replace(" ", "_")
+            if message_name == name_normalized:
+                data = json.loads(msg.payload)
+                if "command" in data:
+                    if data["command"].lower() == "on":
+                        if (time.time() - self.trigger_time) > 5:
+                            print("Trigger!")
+                            self.trigger()
 
 def main():
     # Must be in this order: create client, define callbacks, connect, 
@@ -101,6 +104,7 @@ def main():
     garage_door = GarageDoor(client)
     client.on_message = garage_door.on_message
     client.connect("192.168.1.9", 1883)
+    client.subscribe("homeassistant/register")
     client.subscribe("homeassistant/garage_door/#")
     client.loop_start()
     gpio.setmode(gpio.BCM)

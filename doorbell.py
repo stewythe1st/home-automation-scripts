@@ -38,7 +38,7 @@ class Doorbell:
         self.voltage = self.value * (5.00 / 32767)
         #print("%s" % round(self.voltage, 3))
         if self.baseline != 0:
-            detection_factor = 4.5
+            detection_factor = 5.5
             state = (self.voltage > (self.baseline + (self.variance * detection_factor))) or \
                     (self.voltage < (self.baseline - (self.variance * detection_factor)))
             #print("%0.3fV - %s" % (self.voltage, "RING" if state else "----"))
@@ -108,15 +108,20 @@ class Doorbell:
             self.client.publish(topic, json.dumps(data))
         except:
             pass
-        return     
-          
-
+        return
+        
+    def on_message(self, client, userdata, msg):
+        if msg.topic == "homeassistant/register":
+            self.register()
+        
 def main():
     client = mqtt.Client("mqtt_garden_%u" % os.getpid())
-    client.connect("192.168.1.9", 1883)
-    client.loop_start()
     adc = ads.ADS1115(address=0x48)
     doorbell = Doorbell(client, adc, 0) 
+    client.on_message = doorbell.on_message
+    client.connect("192.168.1.9", 1883)
+    client.subscribe("homeassistant/register")
+    client.loop_start()
     doorbell.register()
     doorbell.get_baseline()
     # Use schedule to re-acquire baseline nightly
