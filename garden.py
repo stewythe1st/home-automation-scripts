@@ -1,13 +1,19 @@
+#!/usr/bin/python3
+
 import paho.mqtt.client as mqtt
 import time
 import json
 import os
 from threading import Timer
 import RPi.GPIO as gpio
-import Adafruit_ADS1x15 as ads
+import board
+import busio
+import adafruit_ads1x15.ads1115 as ads
+from adafruit_ads1x15.analog_in import AnalogIn
+import setproctitle
 
-WET_VOLTAGE = 2.200
-DRY_VOLTAGE = 3.700
+WET_VOLTAGE = 1.000
+DRY_VOLTAGE = 4.100
 OVERRIDE_PIN = 24
 STATUS_PIN = 23
 VALVE_PIN = 21
@@ -20,42 +26,32 @@ class RepeatTimer(Timer):
 
 def scale(value, inMin, inMax, outMin, outMax):
     percentage = (value - inMin) / (inMin - inMax)
-    return (percentage) * (outMin - outMax) + outMin
+    outValue = (percentage) * (outMin - outMax) + outMin
+    outValue = max(min(outValue, outMax), outMin)
+    return outValue
     
 def rotate(l, n = 1):
     return l[-n:] + l[:-n]
 
 class Sensor:
-    def __init__(self, client, adc, channel = 0):
-        self.adc = adc
-        self.channel = channel
+    def __init__(self, client, adc, channel):
+        self.channel = AnalogIn(adc, channel);
         self.voltage = 0.000
         self.moisture = 0.0
-        self.buffer_size = 10
-        self.value = [0] * self.buffer_size
-        number = (((self.adc._device._address - 0x48) * 4) + (self.channel + 1))
-        self.name = "Garden Moisture %u" % number
+        self.buffer_size = 100
+        self.voltage = [0] * self.buffer_size
+        self.name = "Garden Moisture %u" % (channel + 1)
         self.client = client
         for i in range(self.buffer_size):
             self.read()
         
     def read(self):
-        self.value = rotate(self.value)
-        try:
-            value = self.adc.read_adc(self.channel, gain=1)
-        except:
-            self.value[0] = 0
-            self.voltage = 0
-            self.moisture = 0
-            return
-        #number = (((self.adc._device._address - 0x48) * 4) + (self.channel + 1))
-        #if number <= 4:
-            #print("%u: %0.3fV" % (number, value  * (5.00 / 32767)))
-        self.value[0] = value
-        average = sum(self.value) / len(self.value)
-        self.voltage = average * (5.00 / 32767)
-        #self.voltage = min(max(self.voltage, WET_VOLTAGE), DRY_VOLTAGE)
-        self.moisture = scale(self.voltage, WET_VOLTAGE, DRY_VOLTAGE, 100, 0)
+        self.voltage = rotate(self.voltage)
+        self.voltage[0] = self.channel.voltage
+        average = sum(self.voltage) / len(self.voltage)
+        self.moisture = scale(average, DRY_VOLTAGE, WET_VOLTAGE, 0, 100);
+        #if self.name == "Garden Moisture 4":
+        #    print("%s: %0.3fV - %0.3fV - %3.1f%%" % (self.name, self.voltage[0], average, self.moisture))
     
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
@@ -64,9 +60,9 @@ class Sensor:
         data = {
             "name": self.name, 
             "icon": "mdi:water-percent",
-            "unit_of_measurement": "V",
+            "unit_of_measurement": "%",
             "state_topic": "homeassistant/garden/%s" % name_normalized,
-            "value_template": "{{ value_json.voltage }}"
+            "value_template": "{{ value_json.moisture }}"
         }
         try:
             self.client.publish(topic, json.dumps(data), retain=True)
@@ -76,15 +72,17 @@ class Sensor:
         
     def report(self):
         name_normalized = self.name.lower().replace(" ", "_")
-        #print("%s: %s" % (name_normalized, round(self.moisture, 1)))
         topic = "homeassistant/garden/%s" % name_normalized
+        average = sum(self.voltage) / len(self.voltage)
         data = {
-            "moisture": round(self.moisture, 1),
-            "voltage": round(self.voltage, 3)
+            "moisture": round(self.moisture, 2),
+            "voltage_average": round(average, 3),
+            "voltage": round(self.voltage[0], 3)
         }
         try:
             self.client.publish(topic, json.dumps(data))
         except:
+            print("MQTT error")
             pass
         return   
         
@@ -93,10 +91,11 @@ class Valve:
         self.pin = pin
         self.state = False
         self.water_mode = False # Triggered by moisture sensors
-        self.override_mode = False # Manual override by switch
+        self.override_mode = False # Manual override
         self.name = "Garden Watering Valve"
         self.client = client
         gpio.setup(self.pin, gpio.OUT)
+        self.update()
     
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
@@ -116,7 +115,6 @@ class Valve:
         return
         
     def report(self):
-        #self.update()
         name_normalized = self.name.lower().replace(" ", "_")
         topic = "homeassistant/garden/%s" % name_normalized
         data = {
@@ -143,6 +141,18 @@ def on_message(client, userdata, msg):
     if msg.topic == "homeassistant/register":
         for sensor in sensors:
             sensor.register()
+    else:
+        message_name = msg.topic.replace("homeassistant/garden/", "")
+        name_normalized = valve.name.lower().replace(" ", "_")
+        if message_name == name_normalized:
+            data = json.loads(msg.payload)
+            if "command" in data:
+                if data["command"].lower() == "on":
+                    valve.override_mode = True
+                elif data["command"].lower() == "off":
+                    valve.override_mode = False
+                valve.update()
+                valve.report()
         
 def blink():
     global status_led
@@ -150,15 +160,18 @@ def blink():
     gpio.output(STATUS_PIN, status_led)
 
 def main():
+    setproctitle.setproctitle('garden')
     # Set up MQTT
     client = mqtt.Client("mqtt_garden_%u" % os.getpid())
     client.on_message = on_message
     client.connect("192.168.1.9", 1883)
     client.subscribe("homeassistant/register")
+    client.subscribe("homeassistant/garden/#")
     client.loop_start()
     # Set up GPIO
     gpio.setmode(gpio.BCM)
     # Set up valve
+    global valve
     valve = Valve(client, VALVE_PIN)
     valve.register()
     # Blink LED to indicate program is running
@@ -168,33 +181,34 @@ def main():
     timer = RepeatTimer(0.750, blink)
     timer.start()
     # Set up override mode switch
-    gpio.setup(OVERRIDE_PIN, gpio.IN, pull_up_down=gpio.PUD_DOWN)
-    gpio.add_event_detect(OVERRIDE_PIN, gpio.BOTH, callback=valve.override_switched)
-    valve.override_switched(OVERRIDE_PIN)
+    #gpio.setup(OVERRIDE_PIN, gpio.IN, pull_up_down=gpio.PUD_DOWN)
+    #gpio.add_event_detect(OVERRIDE_PIN, gpio.BOTH, callback=valve.override_switched)
+    #valve.override_switched(OVERRIDE_PIN)
     # Set up moisture sensors
+    i2c = busio.I2C(board.SCL, board.SDA)
     global sensors
     sensors = []
-    adc48 = ads.ADS1115(address=0x48)
+    adc48 = ads.ADS1115(i2c, address=0x48)
     sensors.append(Sensor(client, adc48, 0))
     sensors.append(Sensor(client, adc48, 1))
     sensors.append(Sensor(client, adc48, 2))
     sensors.append(Sensor(client, adc48, 3))
-    adc49 = ads.ADS1115(address=0x49)
-    sensors.append(Sensor(client, adc49, 0))
-    sensors.append(Sensor(client, adc49, 1))
-    sensors.append(Sensor(client, adc49, 2))
-    sensors.append(Sensor(client, adc49, 3))
-    adc4A = ads.ADS1115(address=0x4A)
-    sensors.append(Sensor(client, adc4A, 0))
-    sensors.append(Sensor(client, adc4A, 1))
-    sensors.append(Sensor(client, adc4A, 2))
-    sensors.append(Sensor(client, adc4A, 3))
+    # adc49 = ads.ADS1115(i2c, address=0x49)
+    # sensors.append(Sensor(client, adc49, 0))
+    # sensors.append(Sensor(client, adc49, 1))
+    # sensors.append(Sensor(client, adc49, 2))
+    # sensors.append(Sensor(client, adc49, 3))
+    # adc4A = ads.ADS1115(i2c, address=0x4A)
+    # sensors.append(Sensor(client, adc4A, 0))
+    # sensors.append(Sensor(client, adc4A, 1))
+    # sensors.append(Sensor(client, adc4A, 2))
+    # sensors.append(Sensor(client, adc4A, 3))
     for sensor in sensors:
         sensor.register()
         sensor.report()
     while(1):
-        # Report every 15 seconds
-        for i in range(5):
+        # Report every 60 seconds
+        for i in range(15):
             # Take readings every 1 second
             for sensor in sensors:
                 sensor.read()
