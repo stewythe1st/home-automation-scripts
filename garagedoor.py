@@ -1,9 +1,12 @@
+#!/usr/bin/python3
+
 import paho.mqtt.client as mqtt
 import time
 import json
 import os
 import RPi.GPIO as gpio
 from threading import Timer
+import setproctitle
 
 SENSOR_PIN = 12
 OPENER_PIN = 26
@@ -19,28 +22,19 @@ class GarageDoor:
         self.client = client 
         self.state = False
         self.last_state = False
+        self.debouncedState = False
         self.name = name
-        self.time = time.time()
-        self.timing = False
-        self.trigger_time = time.time()
+        self.timeLastChanged = time.time_ns()
     
     def read(self):
         self.state = gpio.input(SENSOR_PIN)
         # Fancy logic to ensure that the state is stable before reporting it as changed
-        if self.timing:
-            if self.state != self.last_state:
-                # If state changed, reset timer 
-                self.time = time.time()
-            else:
-                # If no state change, see if enough seconds have 
-                # passed since last state change
-                if (time.time() - self.time) > 1.5:
-                    self.timing = False
-                    self.report()
-        else:
-            # Start timer
-            self.timing = True
-            self.time = time.time()
+        if self.state != self.last_state:
+            self.timeLastChanged = time.time()
+        if (time.time_ns() - self.timeLastChanged) > 1500000000: # nanoseconds
+            if self.debouncedState != self.state:
+                self.debouncedState = self.state
+                self.report()
         self.last_state = self.state
         
     def trigger(self):
@@ -66,16 +60,14 @@ class GarageDoor:
         return
         
     def report(self):
-        if self.timing:
-            return
         # For a garage door in home assistant, "on" means open, "off" means closed
         # For this sensor, low means closed, high means open
         name_normalized = self.name.lower().replace(" ", "_")
-        print("%s: %s = %s" % \
-            (name_normalized, self.state, "open" if self.state else "closed"))
+        #print("%s: %s = %s" % \
+        #    (name_normalized, self.debouncedState, "open" if self.debouncedState else "closed"))
         topic = "homeassistant/garage_door/%s" % name_normalized
         data = {
-            "state": "ON" if self.state else "OFF"
+            "state": "ON" if self.debouncedState else "OFF"
         }
         try:
             self.client.publish(topic, json.dumps(data))
@@ -93,11 +85,11 @@ class GarageDoor:
                 data = json.loads(msg.payload)
                 if "command" in data:
                     if data["command"].lower() == "on":
-                        if (time.time() - self.trigger_time) > 5:
-                            print("Trigger!")
-                            self.trigger()
+                        print("Trigger!")
+                        self.trigger()
 
 def main():
+    setproctitle.setproctitle('garagedoor')
     # Must be in this order: create client, define callbacks, connect, 
     # subscribe, start loop or proceed to do other things
     client = mqtt.Client("mqtt_garden_%u" % os.getpid())
@@ -121,7 +113,7 @@ def main():
     garage_door.report()
     while(1):
         garage_door.read()
-        time.sleep(0.1)
+        time.sleep(0.05)
 
 if __name__ == "__main__":
     main()

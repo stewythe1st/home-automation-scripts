@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import paho.mqtt.client as mqtt
 import time
 import json
@@ -5,6 +7,7 @@ import os
 from threading import Timer
 import schedule
 import Adafruit_ADS1x15 as ads
+import setproctitle
 
 # https://stackoverflow.com/a/48741004
 class RepeatTimer(Timer):
@@ -115,6 +118,7 @@ class Doorbell:
             self.register()
         
 def main():
+    setproctitle.setproctitle('doorbell')
     client = mqtt.Client("mqtt_garden_%u" % os.getpid())
     adc = ads.ADS1115(address=0x48)
     doorbell = Doorbell(client, adc, 0) 
