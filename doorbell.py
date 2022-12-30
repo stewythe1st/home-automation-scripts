@@ -90,6 +90,7 @@ class Doorbell:
         data = {
             "name": self.name, 
             "icon": "mdi:doorbell",
+            "unique_id": "doorbell",
             "state_topic": "homeassistant/doorbell/%s" % name_normalized,
             "value_template": "{{ value_json.state }}"
         }
