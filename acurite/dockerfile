@@ -1,0 +1,7 @@
+FROM python:3
+WORKDIR /usr/src/app
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+COPY acurite.py ./
+EXPOSE 1883
+CMD [ "python", "-u", "./acurite.py" ]
