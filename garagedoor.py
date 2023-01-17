@@ -56,13 +56,20 @@ class GarageDoor:
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
         print("Registering %s with Home Assistant..." % name_normalized)
+        device = {
+            "identifiers": name_normalized,
+            "name": "Garage Door",
+            "model": "Garage Door",
+            "manufacturer": "",
+        }
         topic = "homeassistant/cover/%s/config" % name_normalized
         data = {
             "name": self.name, 
             "device_class": "garage",
             "unique_id": "garagedoor",
             "command_topic": "homeassistant/garage_door/%s/command" % name_normalized,
-            "state_topic": "homeassistant/garage_door/%s/state" % name_normalized
+            "state_topic": "homeassistant/garage_door/%s/state" % name_normalized,
+            "device": device,
         }
         try:
             self.client.publish(topic, json.dumps(data), retain=True)

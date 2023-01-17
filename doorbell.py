@@ -86,13 +86,20 @@ class Doorbell:
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
         print("Registering %s with Home Assistant..." % name_normalized)
+        device = {
+            "identifiers": name_normalized,
+            "name": "Doorbell",
+            "model": "Doorbell",
+            "manufacturer": "",
+        }
         topic = "homeassistant/binary_sensor/%s/config" % name_normalized
         data = {
             "name": self.name, 
             "icon": "mdi:doorbell",
             "unique_id": "doorbell",
             "state_topic": "homeassistant/doorbell/%s" % name_normalized,
-            "value_template": "{{ value_json.state }}"
+            "value_template": "{{ value_json.state }}",
+            "device": device,
         }
         try:
             self.client.publish(topic, json.dumps(data), retain=True)
