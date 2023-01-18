@@ -56,16 +56,25 @@ class Sensor:
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
         print("Registering %s with Home Assistant..." % name_normalized)
+        device = {
+            "identifiers": "Garden-Watering-System",
+            "name": "Garden Watering System",
+            "model": "Garden Watering System",
+            "manufacturer": "",
+        }
         topic = "homeassistant/sensor/%s/config" % name_normalized
         data = {
-            "name": self.name, 
+            "name": self.name,
+            "device_class": "moisture",
+            "unique_id": name_normalized,
             "icon": "mdi:water-percent",
             "unit_of_measurement": "%",
             "state_topic": "homeassistant/garden/%s" % name_normalized,
-            "value_template": "{{ value_json.moisture }}"
+            "value_template": "{{ value_json.moisture }}",
+            "device": device,
         }
         try:
-            self.client.publish(topic, json.dumps(data), retain=True)
+            self.client.publish(topic, json.dumps(data))
         except:
             pass
         return
@@ -100,16 +109,25 @@ class Valve:
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
         print("Registering %s with Home Assistant..." % name_normalized)
+        device = {
+            "identifiers": "Garden-Watering-System",
+            "name": "Garden Watering System",
+            "model": "Garden Watering System",
+            "manufacturer": "",
+        }
         topic = "homeassistant/switch/%s/config" % name_normalized
         data = {
-            "name": self.name, 
+            "name": self.name,
+            "device_class": "switch",
+            "unique_id": name_normalized,
             "icon": "mdi:pipe-valve",
             "state_topic": "homeassistant/garden/%s" % name_normalized,
             "command_topic": "homeassistant/garden/%s/command" % name_normalized,
-            "value_template": "{{ value_json.state }}"
+            "value_template": "{{ value_json.state }}",
+            "device": device,
         }
         try:
-            self.client.publish(topic, json.dumps(data), retain=True)
+            self.client.publish(topic, json.dumps(data))
         except:
             pass
         return
@@ -142,17 +160,18 @@ def on_message(client, userdata, msg):
         for sensor in sensors:
             sensor.register()
     else:
-        message_name = msg.topic.replace("homeassistant/garden/", "")
         name_normalized = valve.name.lower().replace(" ", "_")
-        if message_name == name_normalized:
-            data = json.loads(msg.payload)
-            if "command" in data:
-                if data["command"].lower() == "on":
-                    valve.override_mode = True
-                elif data["command"].lower() == "off":
-                    valve.override_mode = False
-                valve.update()
-                valve.report()
+        command_topic = "homeassistant/garden/%s/command" % name_normalized
+        if msg.topic == command_topic:
+            data = msg.payload.decode().lower()
+            if data == "on":
+                valve.override_mode = True
+            elif data == "off":
+                valve.override_mode = False
+            print(msg.payload.lower())
+            print(valve.override_mode)
+            valve.update()
+            valve.report()
         
 def blink():
     global status_led
@@ -207,7 +226,7 @@ def main():
         sensor.register()
         sensor.report()
     while(1):
-        # Report every 60 seconds
+        # Report every x seconds
         for i in range(15):
             # Take readings every 1 second
             for sensor in sensors:
