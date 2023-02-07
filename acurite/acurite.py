@@ -99,24 +99,38 @@ def door_sensor_handle_data(data):
             door_sensor_register(id)
             door_sensor_known_ids.append(id)
         print("Forwarding data from Door Sensor %s" % id)
-        topic = "homeassistant/Generic-Remote/%s" % id
+        topic = "homeassistant/generic-remote/%s" % id
         client.publish(topic, json.dumps(data))
 
 def door_sensor_register_all():
-    pass
+    for id in door_sensor_known_ids:
+        door_sensor_register(id)
+        # Send a 'closed' message
+        topic = "homeassistant/generic-remote/%s" % id
+        data = {
+            "cmd": 121
+        }
+        client.publish(topic, json.dumps(data))
 
-def door_sensor_register(data):
+def door_sensor_register(id):
     print("Registering %s with Home Assistant" % id)
-    topic = "homeassistant/sensor/Acurite-Tower-%s/config" % id
-    unique_id = "Door-Sensor-%s" % id
+    topic = "homeassistant/binary_sensor/door-sensor-%s/config" % id
+    unique_id = "door-sensor-%s" % id
+    device = {
+        "identifiers": unique_id,
+        "name": "Door Sensor %s" % id,
+        "model": "Generic-Remote",
+        "manufacturer": "",
+    }
     data = {
-        "name": unique_id,
+        "name": "Door",
         "device_class": "door",
         "unique_id": unique_id,
-        "state_topic": "homeassistant/Generic-Remote/%s" % id,
+        "state_topic": "homeassistant/generic-remote/%s" % id,
         "payload_on": 115,
         "payload_off": 121,
         "value_template": "{{ value_json.cmd }}",
+        "device": device,
     }
     client.publish(topic, json.dumps(data))
 
