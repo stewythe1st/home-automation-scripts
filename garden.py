@@ -18,6 +18,8 @@ OVERRIDE_PIN = 24
 STATUS_PIN = 23
 VALVE_PIN = 21
 
+client = mqtt.Client("mqtt_garden_%u" % os.getpid())
+
 # https://stackoverflow.com/a/48741004
 class RepeatTimer(Timer):
     def run(self):
@@ -32,6 +34,28 @@ def scale(value, inMin, inMax, outMin, outMax):
     
 def rotate(l, n = 1):
     return l[-n:] + l[:-n]
+    
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("Connected")
+        client.subscribe("homeassistant/register")
+        client.subscribe("homeassistant/garden/#")
+    else:
+        print("Error connecting (%i)" % rc)
+        
+def on_disconnect(client, userdata,  rc):
+	try_connect()
+
+def try_connect():
+    connected = False
+    while not connected:
+        try:
+            client.connect("192.168.1.9", 1883)
+        except:
+            print("Unable to connect... retrying...")
+            time.sleep(2)
+        else:
+            connected = True
 
 class Sensor:
     def __init__(self, client, adc, channel):
@@ -181,11 +205,10 @@ def blink():
 def main():
     setproctitle.setproctitle('garden')
     # Set up MQTT
-    client = mqtt.Client("mqtt_garden_%u" % os.getpid())
     client.on_message = on_message
-    client.connect("192.168.1.9", 1883)
-    client.subscribe("homeassistant/register")
-    client.subscribe("homeassistant/garden/#")
+    client.on_connect = on_connect
+    client.on_disconnect = on_disconnect
+    try_connect()
     client.loop_start()
     # Set up GPIO
     gpio.setmode(gpio.BCM)
