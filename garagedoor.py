@@ -126,6 +126,28 @@ class GarageDoor:
                         self.state = State.OPEN
                         self.trigger()
                 self.report()
+                
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print("Connected")
+            client.subscribe("homeassistant/register")
+            client.subscribe("homeassistant/garage_door/#")
+        else:
+            print("Error connecting (%i)" % rc)
+                
+    def on_disconnect(self, client, userdata,  rc):
+        garage_door.try_connect()
+        
+    def try_connect(self, client):
+        connected = False
+        while not connected:
+            try:
+                client.connect("192.168.1.9", 1883)
+            except:
+                print("Unable to connect... retrying...")
+                time.sleep(2)
+            else:
+                connected = True
 
 def main():
     setproctitle.setproctitle('garagedoor')
@@ -134,9 +156,9 @@ def main():
     client = mqtt.Client("mqtt_garden_%u" % os.getpid())
     garage_door = GarageDoor(client)
     client.on_message = garage_door.on_message
-    client.connect("192.168.1.9", 1883)
-    client.subscribe("homeassistant/register")
-    client.subscribe("homeassistant/garage_door/#")
+    client.on_connect = garage_door.on_connect
+    client.on_disconnect = garage_door.on_disconnect
+    garage_door.try_connect(client)
     client.loop_start()
     gpio.setmode(gpio.BCM)
     gpio.setup(SENSOR_PIN, gpio.IN, pull_up_down=gpio.PUD_UP)
@@ -155,5 +177,8 @@ def main():
         time.sleep(0.05)
 
 if __name__ == "__main__":
-    main()
-    
+    try:
+        main()
+    except KeyboardInterrupt:
+        gpio.cleanup()
+        os._exit(0)
