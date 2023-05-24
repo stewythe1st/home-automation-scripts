@@ -183,6 +183,7 @@ def on_message(client, userdata, msg):
     if msg.topic == "homeassistant/register":
         for sensor in sensors:
             sensor.register()
+        valve.register()
     else:
         name_normalized = valve.name.lower().replace(" ", "_")
         command_topic = "homeassistant/garden/%s/command" % name_normalized
