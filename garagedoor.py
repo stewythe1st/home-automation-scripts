@@ -134,9 +134,6 @@ class GarageDoor:
             client.subscribe("homeassistant/garage_door/#")
         else:
             print("Error connecting (%i)" % rc)
-                
-    def on_disconnect(self, client, userdata,  rc):
-        garage_door.try_connect()
         
     def try_connect(self, client):
         connected = False
@@ -149,11 +146,14 @@ class GarageDoor:
             else:
                 connected = True
 
+    def on_disconnect(self, client, userdata,  rc):
+        self.try_connect(client)
+
 def main():
     setproctitle.setproctitle('garagedoor')
     # Must be in this order: create client, define callbacks, connect, 
     # subscribe, start loop or proceed to do other things
-    client = mqtt.Client("mqtt_garden_%u" % os.getpid())
+    client = mqtt.Client("mqtt_garagedoor_%u" % os.getpid())
     garage_door = GarageDoor(client)
     client.on_message = garage_door.on_message
     client.on_connect = garage_door.on_connect
