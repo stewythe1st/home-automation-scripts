@@ -29,10 +29,13 @@ def on_message(client, userdata, msg):
                 acurite_handle_data(data)
             if data["model"] == "Generic-Remote":
                 door_sensor_handle_data(data)
+            if data["model"] == "Smoke-GS558":
+                button_handle_data(data)
     elif msg.topic == "homeassistant/register":
         print("Re-registering all...")
         acurite_register_all()
         door_sensor_register_all()
+        button_register_all()
 
 acurite_known_ids = []
 def acurite_handle_data(data):
@@ -113,7 +116,7 @@ def door_sensor_register_all():
         client.publish(topic, json.dumps(data))
 
 def door_sensor_register(id):
-    print("Registering %s with Home Assistant" % id)
+    print("Registering Door Sensor %s with Home Assistant" % id)
     topic = "homeassistant/binary_sensor/door-sensor-%s/config" % id
     unique_id = "door-sensor-%s" % id
     device = {
@@ -131,6 +134,54 @@ def door_sensor_register(id):
         "payload_off": 121,
         "value_template": "{{ value_json.cmd }}",
         "device": device,
+    }
+    client.publish(topic, json.dumps(data))
+
+button_known_ids = []
+def button_handle_data(data):
+    if "id" in data:
+        id = data["id"]
+        if id not in button_known_ids:
+            button_register(id)
+            button_known_ids.append(id)
+        data["press"] = True
+        print("Forwarding data from Button %s" % id)
+        topic = "homeassistant/button/%s" % id
+        client.publish(topic, json.dumps(data))
+        data["press"] = False
+        client.publish(topic, json.dumps(data))
+
+def button_register_all():
+    for id in button_known_ids:
+        button_register(id)
+
+def button_register(id):
+    print("Registering Button %s with Home Assistant" % id)
+    topic = "homeassistant/binary_sensor/button-%s/config" % id
+    unique_id = "button-%s" % id
+    device = {
+        "identifiers": unique_id,
+        "name": "Button %s" % id,
+        "model": "Button",
+        "manufacturer": "",
+    }
+    data = {
+        "name": "Button",
+        "device_class": None,
+        "unique_id": unique_id,
+        "state_topic": "homeassistant/button/%s" % id,
+        "payload_on": True,
+        "payload_off": False,
+        "value_template": "{{ value_json.press }}",
+        "device": device,
+    }
+    client.publish(topic, json.dumps(data))
+    # send a dummy message saying unpressed
+    topic = "homeassistant/button/%s" % id
+    data = {
+        "model": "Smoke-GS558",
+        "id": "%s" % id,
+        "press": False,
     }
     client.publish(topic, json.dumps(data))
 
