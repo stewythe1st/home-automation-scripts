@@ -17,6 +17,8 @@ DRY_VOLTAGE = 4.100
 OVERRIDE_PIN = 24
 STATUS_PIN = 23
 VALVE_PIN = 21
+MAX_ON_TIME = 3600 # seconds
+REPORT_PERIOD = 60 # seconds
 
 client = mqtt.Client("mqtt_garden_%u" % os.getpid())
 
@@ -57,6 +59,7 @@ def try_connect():
         else:
             connected = True
 
+id_counter = 1
 class Sensor:
     def __init__(self, client, adc, channel):
         self.channel = AnalogIn(adc, channel);
@@ -64,7 +67,10 @@ class Sensor:
         self.moisture = 0.0
         self.buffer_size = 100
         self.voltage = [0] * self.buffer_size
-        self.name = "Garden Moisture %u" % (channel + 1)
+        global id_counter
+        self.id = id_counter
+        id_counter = id_counter + 1
+        self.name = "Garden Moisture %u" % (self.id)
         self.client = client
         for i in range(self.buffer_size):
             self.read()
@@ -127,6 +133,7 @@ class Valve:
         self.override_mode = False # Manual override
         self.name = "Garden Watering Valve"
         self.client = client
+        self.on_time = 0
         gpio.setup(self.pin, gpio.OUT)
         self.update()
     
@@ -157,6 +164,10 @@ class Valve:
         return
         
     def report(self):
+        #print("Valve on for %us" % (time.time() - self.on_time))
+        if (time.time() - self.on_time) > MAX_ON_TIME:
+            valve.override_mode = False
+            valve.update()
         name_normalized = self.name.lower().replace(" ", "_")
         topic = "homeassistant/garden/%s" % name_normalized
         data = {
@@ -172,6 +183,10 @@ class Valve:
     def update(self):
         self.state = self.water_mode or self.override_mode
         gpio.output(VALVE_PIN, self.state)
+        if self.state & (self.on_time == 0):
+            self.on_time = time.time()
+        else:
+            self.on_time = 0
         
     def override_switched(self, pin):
         self.override_mode = gpio.input(OVERRIDE_PIN)
@@ -236,11 +251,11 @@ def main():
     sensors.append(Sensor(client, adc48, 1))
     sensors.append(Sensor(client, adc48, 2))
     sensors.append(Sensor(client, adc48, 3))
-    # adc49 = ads.ADS1115(i2c, address=0x49)
-    # sensors.append(Sensor(client, adc49, 0))
-    # sensors.append(Sensor(client, adc49, 1))
-    # sensors.append(Sensor(client, adc49, 2))
-    # sensors.append(Sensor(client, adc49, 3))
+    adc49 = ads.ADS1115(i2c, address=0x49)
+    sensors.append(Sensor(client, adc49, 0))
+    sensors.append(Sensor(client, adc49, 1))
+    sensors.append(Sensor(client, adc49, 2))
+    sensors.append(Sensor(client, adc49, 3))
     # adc4A = ads.ADS1115(i2c, address=0x4A)
     # sensors.append(Sensor(client, adc4A, 0))
     # sensors.append(Sensor(client, adc4A, 1))
@@ -251,7 +266,7 @@ def main():
         sensor.report()
     while(1):
         # Report every x seconds
-        for i in range(15):
+        for i in range(REPORT_PERIOD):
             # Take readings every 1 second
             for sensor in sensors:
                 sensor.read()
