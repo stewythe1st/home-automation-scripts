@@ -39,14 +39,15 @@ def rotate(l, n = 1):
     
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        print("Connected")
+        print("Connected", flush=True)
         client.subscribe("homeassistant/register")
         client.subscribe("homeassistant/garden/#")
     else:
-        print("Error connecting (%i)" % rc)
+        print("Error connecting (%i)" % rc, flush=True)
         
 def on_disconnect(client, userdata,  rc):
-	try_connect()
+    print("Disconnected", flush=True)
+    try_connect()
 
 def try_connect():
     connected = False
@@ -54,7 +55,7 @@ def try_connect():
         try:
             client.connect("192.168.1.9", 1883)
         except:
-            print("Unable to connect... retrying...")
+            print("Unable to connect... retrying...", flush=True)
             time.sleep(2)
         else:
             connected = True
@@ -81,11 +82,11 @@ class Sensor:
         average = sum(self.voltage) / len(self.voltage)
         self.moisture = scale(average, DRY_VOLTAGE, WET_VOLTAGE, 0, 100);
         #if self.name == "Garden Moisture 4":
-        #    print("%s: %0.3fV - %0.3fV - %3.1f%%" % (self.name, self.voltage[0], average, self.moisture))
+        #    print("%s: %0.3fV - %0.3fV - %3.1f%%" % (self.name, self.voltage[0], average, self.moisture), flush=True)
     
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
-        print("Registering %s with Home Assistant..." % name_normalized)
+        print("Registering %s with Home Assistant..." % name_normalized, flush=True)
         device = {
             "identifiers": "Garden-Watering-System",
             "name": "Garden Watering System",
@@ -121,7 +122,7 @@ class Sensor:
         try:
             self.client.publish(topic, json.dumps(data))
         except:
-            print("MQTT error")
+            print("MQTT error", flush=True)
             pass
         return   
         
@@ -139,7 +140,7 @@ class Valve:
     
     def register(self):
         name_normalized = self.name.lower().replace(" ", "_")
-        print("Registering %s with Home Assistant..." % name_normalized)
+        print("Registering %s with Home Assistant..." % name_normalized, flush=True)
         device = {
             "identifiers": "Garden-Watering-System",
             "name": "Garden Watering System",
@@ -164,7 +165,8 @@ class Valve:
         return
         
     def report(self):
-        #print("Valve on for %us" % (time.time() - self.on_time))
+        if valve.override_mode:
+            print("Valve on for %us" % (time.time() - self.on_time), flush=True)
         if (time.time() - self.on_time) > MAX_ON_TIME:
             valve.override_mode = False
             valve.update()
@@ -190,7 +192,7 @@ class Valve:
         
     def override_switched(self, pin):
         self.override_mode = gpio.input(OVERRIDE_PIN)
-        print("Overriding to %s" % "ON" if self.override_mode else "OFF")
+        print("Overriding to %s" % "ON" if self.override_mode else "OFF", flush=True)
         self.update()
         self.report()
         
@@ -208,8 +210,8 @@ def on_message(client, userdata, msg):
                 valve.override_mode = True
             elif data == "off":
                 valve.override_mode = False
-            print(msg.payload.lower())
-            print(valve.override_mode)
+            print(msg.payload.lower(), flush=True)
+            print(valve.override_mode, flush=True)
             valve.update()
             valve.report()
         
