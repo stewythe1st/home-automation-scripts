@@ -124,6 +124,27 @@ class Doorbell:
     def on_message(self, client, userdata, msg):
         if msg.topic == "homeassistant/register":
             self.register()
+            
+    def on_connect(self, client, userdata, flags, rc):
+        if rc == 0:
+            print("Connected")
+            client.subscribe("homeassistant/register")
+        else:
+            print("Error connecting (%i)" % rc)
+        
+    def try_connect(self, client):
+        connected = False
+        while not connected:
+            try:
+                client.connect("192.168.1.9", 1883)
+            except:
+                print("Unable to connect... retrying...")
+                time.sleep(2)
+            else:
+                connected = True
+
+    def on_disconnect(self, client, userdata,  rc):
+        self.try_connect(client)
         
 def main():
     setproctitle.setproctitle('doorbell')
@@ -131,8 +152,9 @@ def main():
     adc = ads.ADS1115(address=0x48)
     doorbell = Doorbell(client, adc, 0) 
     client.on_message = doorbell.on_message
-    client.connect("192.168.1.9", 1883)
-    client.subscribe("homeassistant/register")
+    client.on_connect = doorbell.on_connect
+    client.on_disconnect = doorbell.on_disconnect
+    doorbell.try_connect(client)
     client.loop_start()
     doorbell.register()
     doorbell.get_baseline()
