@@ -93,6 +93,21 @@ def acurite_register(id):
         "device": device,
     }
     client.publish(topic, json.dumps(data))
+    # Battery
+    topic = "homeassistant/binary_sensor/%s-battery/config" % unique_id
+    data = {
+        "name": "Battery",
+        "icon": "mdi:battery-charging",
+        "device_class": "battery",
+        "unique_id": "%s-battery" % unique_id,
+        "object_id": "%s-battery" % unique_id,
+        "state_topic": "homeassistant/acurite-tower/%s" % id,
+        "payload_on": "0",  # battery low
+        "payload_off": "1", # battery normal
+        "value_template": "{{ value_json.battery_ok }}",
+        "device": device,
+    }
+    client.publish(topic, json.dumps(data))
 
 door_sensor_known_ids = []
 def door_sensor_handle_data(data):
