@@ -45,7 +45,8 @@ def acurite_handle_data(data):
             acurite_register(id)
             acurite_known_ids.append(id)
         temp_f = data["temperature_C"] * 9/5 + 32
-        if temp_f < 120 and temp_f > -20:
+        # Bumping this up for my stupid attic fan that wasn't working and the attic was getting insanely hot.
+        if temp_f < 140 and temp_f > -20:
             print("Forwarding data from Acurite %s" % id)
             topic = "homeassistant/acurite-tower/%s" % id
             client.publish(topic, json.dumps(data))
